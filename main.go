@@ -18,13 +18,14 @@ func main() {
 
 	// 加载配置
 	config := LoadConfig()
-	log.Printf("Loaded Lark config: AppID=%s, BaseURL=%s", config.LarkID, config.LarkBaseURL)
+	log.Printf("Loaded Lark config: AppID=%s, BaseURL=%s, WebURL=%s", config.LarkID, config.LarkBaseURL, config.LarkWebURL)
 
 	// 创建飞书中间件配置
 	larkConfig := &middlewares.LarkConfig{
 		AppID:     config.LarkID,
 		AppSecret: config.LarkSecret,
 		BaseURL:   config.LarkBaseURL,
+		WebURL:    config.LarkWebURL,
 	}
 
 	isGoRun := strings.HasPrefix(os.Args[0], os.TempDir())
@@ -38,6 +39,9 @@ func main() {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		// 注册路由并绑定飞书中间件
 		se.Router.GET("/base/{baseID}/{tableID}/{recordID}", router.LarkBaseTable).BindFunc(
+			middlewares.LarkAuth(larkConfig),
+		)
+		se.Router.GET("/base/{baseID}/{tableID}", router.LarkBaseTable).BindFunc(
 			middlewares.LarkAuth(larkConfig),
 		)
 

@@ -1,0 +1,36 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# 飞书多维表格映射服务 - 项目概览
+
+## 项目简介
+这是一个基于 Go 语言和 PocketBase 开发的飞书多维表格映射服务，主要用于提供飞书多维表格的 API 映射功能。
+
+## 核心架构
+- **后端框架**: PocketBase - 提供数据库和 API 框架
+- **主要语言**: Go 1.23+
+- **部署方式**: Docker 容器化部署，支持多架构（linux/amd64, linux/arm64）
+
+## 关键文件说明
+- [main.go](mdc:main.go): 应用程序入口点，负责初始化 PocketBase 应用和注册路由
+- [config.go](mdc:config.go): 配置管理，加载飞书应用配置信息
+- [middlewares/lark.go](mdc:middlewares/lark.go): 飞书认证中间件
+- [router/lark.go](mdc:router/lark.go): 飞书多维表格相关的路由处理器
+- [go.mod](mdc:go.mod): Go 模块依赖管理
+
+## API 路由
+- `GET /base/{baseID}/{tableID}/{recordID}`: 获取特定记录
+- `GET /base/{baseID}/{tableID}`: 获取表格数据
+
+## 配置要求
+项目需要以下环境变量：
+- `LARK_APP_ID`: 飞书应用 ID
+- `LARK_APP_SECRET`: 飞书应用密钥
+- `LARK_BASE_URL`: 飞书 API 基础 URL（默认: https://open.feishu.cn）
+- `LARK_WEB_URL`: 飞书 Web URL（可选）
+
+## 开发模式
+- 支持自动迁移（仅在开发模式下启用）
+- 使用 .env 文件管理本地环境配置

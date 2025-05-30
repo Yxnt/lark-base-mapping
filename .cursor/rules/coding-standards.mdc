@@ -1,0 +1,48 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Go 编码规范和项目约定
+
+## Go 代码规范
+- 遵循标准的 Go 编码规范和 gofmt 格式化
+- 使用有意义的变量和函数命名，采用驼峰命名法
+- 函数和结构体应包含清晰的注释说明
+- 错误处理：始终检查和处理错误，使用 `log.Printf` 记录警告信息
+
+## 项目结构约定
+```
+├── main.go              # 应用入口点
+├── config.go           # 配置管理
+├── middlewares/        # 中间件目录
+│   └── lark.go        # 飞书相关中间件
+├── router/            # 路由处理器目录  
+│   └── lark.go       # 飞书API路由处理
+├── migrations/       # 数据库迁移文件
+└── pb_data/         # PocketBase 数据目录
+```
+
+## PocketBase 集成规范
+- 使用 `pocketbase.New()` 创建应用实例
+- 路由注册应在 `app.OnServe().BindFunc()` 中进行
+- 中间件绑定使用 `.BindFunc()` 方法
+- 数据库操作通过 PocketBase 的 ORM 进行
+
+## 飞书 API 集成规范
+- 配置信息通过环境变量加载，参考 [config.go](mdc:config.go)
+- 使用中间件进行统一的飞书认证，参考 [middlewares/lark.go](mdc:middlewares/lark.go)
+- API 路由处理器放在 `router` 包中，参考 [router/lark.go](mdc:router/lark.go)
+- 飞书相关的结构体和配置应保持一致性
+
+## 错误处理约定
+- 使用 `log.Printf` 记录错误和警告信息
+- 环境变量加载失败时记录警告但不中断程序
+- HTTP 错误应返回合适的状态码和错误信息
+- 致命错误使用 `log.Fatal()` 处理
+
+## Docker 和部署
+- Dockerfile 应遵循多阶段构建最佳实践
+- 支持多架构构建（linux/amd64, linux/arm64）
+- 使用 GitHub Actions 进行 CI/CD 自动化构建
+- 环境配置通过环境变量和 .env 文件管理

@@ -11,6 +11,7 @@ type LarkApp struct {
 	LarkID      string
 	LarkSecret  string
 	LarkBaseURL string
+	LarkWebURL  string
 }
 
 // LoadConfig 从环境变量加载配置
@@ -24,6 +25,7 @@ func LoadConfig() *LarkApp {
 		LarkID:      os.Getenv("LARK_APP_ID"),
 		LarkSecret:  os.Getenv("LARK_APP_SECRET"),
 		LarkBaseURL: getEnvOrDefault("LARK_BASE_URL", "https://open.feishu.cn"),
+		LarkWebURL:  getEnvOrDefault("LARK_WEB_URL", ""),
 	}
 }
 

@@ -60,6 +60,27 @@ func LarkBaseTable(e *core.RequestEvent) error {
 		"baseID", baseID,
 		"tableID", tableID,
 		"baseRecordID", base.Id)
+
+	// 如果没有提供 recordID，直接重定向到飞书页面
+	if recordID == "" {
+		// 获取 table 记录中的 view_id
+		viewID := table.GetString("view_id")
+		if viewID == "" {
+			return e.NotFoundError("View ID not found for this table", nil)
+		}
+
+		// 构建重定向 URL
+		redirectURL := fmt.Sprintf("%s/base/%s?table=%s&view=%s", larkConfig.WebURL, baseID, tableID, viewID)
+
+		app.Logger().Info("Redirecting to Feishu page",
+			"baseID", baseID,
+			"tableID", tableID,
+			"viewID", viewID,
+			"redirectURL", redirectURL)
+
+		return e.Redirect(http.StatusFound, redirectURL)
+	}
+
 	app.Logger().Info("Processing record", "recordID", recordID)
 
 	// 初始化飞书客户端

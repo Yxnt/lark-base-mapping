@@ -11,6 +11,7 @@ type LarkConfig struct {
 	AppID     string
 	AppSecret string
 	BaseURL   string
+	WebURL    string
 }
 
 // LarkAuth 创建飞书认证中间件
