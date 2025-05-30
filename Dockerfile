@@ -10,4 +10,4 @@ RUN CGO_ENABLED=0 go build -o /go/bin/app
 # Now copy it into our base image.
 FROM gcr.ispider.io/distroless/static-debian12
 COPY --from=build /go/bin/app /
-CMD ["/app"]
+CMD ["/app","serve","--http=0.0.0.0:8080"]
