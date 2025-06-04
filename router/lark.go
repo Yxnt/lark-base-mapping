@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkbitable "github.com/larksuite/oapi-sdk-go/v3/service/bitable/v1"
 	"github.com/pocketbase/pocketbase/core"
 	"gitlab.yogorobot.com/sre/lark-base-mapping/middlewares"
@@ -21,6 +20,12 @@ func LarkBaseTable(e *core.RequestEvent) error {
 	larkConfig, ok := middlewares.GetLarkConfigFromContext(e.Request.Context())
 	if !ok {
 		return e.BadRequestError("Lark config not found in context", nil)
+	}
+
+	// 从中间件上下文中获取飞书客户端
+	client, ok := middlewares.GetLarkClientFromContext(e.Request.Context())
+	if !ok {
+		return e.BadRequestError("Lark client not found in context", nil)
 	}
 
 	app.Logger().Info("Using Lark config",
@@ -82,9 +87,6 @@ func LarkBaseTable(e *core.RequestEvent) error {
 	}
 
 	app.Logger().Info("Processing record", "recordID", recordID)
-
-	// 初始化飞书客户端
-	client := lark.NewClient(larkConfig.AppID, larkConfig.AppSecret)
 
 	// 使用搜索记录的方式获取记录
 	searchReq := larkbitable.NewSearchAppTableRecordReqBuilder().

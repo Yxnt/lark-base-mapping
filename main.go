@@ -20,12 +20,23 @@ func main() {
 	config := LoadConfig()
 	log.Printf("Loaded Lark config: AppID=%s, BaseURL=%s, WebURL=%s", config.LarkID, config.LarkBaseURL, config.LarkWebURL)
 
-	// 创建飞书中间件配置
-	larkConfig := &middlewares.LarkConfig{
-		AppID:     config.LarkID,
-		AppSecret: config.LarkSecret,
-		BaseURL:   config.LarkBaseURL,
-		WebURL:    config.LarkWebURL,
+	// 加载GitLab配置
+	gitlabConfig := LoadGitLabConfig()
+	log.Printf("Loaded GitLab config: BaseURL=%s, WebhookSecret configured=%t",
+		gitlabConfig.BaseURL, gitlabConfig.WebhookSecret != "")
+
+	// 创建飞书中间件配置，使用NewLarkConfig函数
+	larkConfig := middlewares.NewLarkConfig(
+		config.LarkID,
+		config.LarkSecret,
+		config.LarkBaseURL,
+		config.LarkWebURL,
+	)
+
+	// 创建GitLab中间件配置
+	gitlabMiddlewareConfig := &middlewares.GitLabConfig{
+		WebhookSecret: gitlabConfig.WebhookSecret,
+		BaseURL:       gitlabConfig.BaseURL,
 	}
 
 	isGoRun := strings.HasPrefix(os.Args[0], os.TempDir())
@@ -37,11 +48,17 @@ func main() {
 	})
 
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-		// 注册路由并绑定飞书中间件
+		// 注册飞书路由并绑定飞书中间件
 		se.Router.GET("/base/{baseID}/{tableID}/{recordID}", router.LarkBaseTable).BindFunc(
 			middlewares.LarkAuth(larkConfig),
 		)
 		se.Router.GET("/base/{baseID}/{tableID}", router.LarkBaseTable).BindFunc(
+			middlewares.LarkAuth(larkConfig),
+		)
+
+		// 注册GitLab webhook路由并绑定GitLab和飞书中间件
+		se.Router.POST("/webhook/gitlab", router.GitLabWebhook).BindFunc(
+			middlewares.GitLabWebhook(gitlabMiddlewareConfig),
 			middlewares.LarkAuth(larkConfig),
 		)
 

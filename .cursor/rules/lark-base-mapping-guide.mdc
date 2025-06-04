@@ -1,0 +1,231 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Lark Base Mapping 项目开发指南
+
+## 项目概述
+
+这是一个基于 PocketBase 的飞书多维表格映射服务，使用 Go 语言开发，提供飞书（Lark）和 GitLab 的集成功能。
+
+### 技术栈
+- **后端框架**: PocketBase (基于 Go 的 BaaS 解决方案)
+- **语言**: Go 1.23+
+- **主要依赖**: 
+  - `github.com/pocketbase/pocketbase` - 后端框架
+  - `github.com/larksuite/oapi-sdk-go/v3` - 飞书 Open API SDK
+  - `github.com/joho/godotenv` - 环境变量管理
+
+### 项目结构
+```
+├── [main.go](mdc:main.go)                    # 应用程序入口点，配置路由和中间件
+├── [config.go](mdc:config.go)                # 配置管理（飞书和GitLab配置）
+├── middlewares/                              # 中间件目录
+│   ├── [lark.go](mdc:middlewares/lark.go)    # 飞书认证中间件
+│   └── [gitlab.go](mdc:middlewares/gitlab.go) # GitLab webhook中间件
+├── router/                                   # 路由处理器目录
+│   ├── [lark.go](mdc:router/lark.go)        # 飞书相关API路由
+│   └── [gitlab.go](mdc:router/gitlab.go)    # GitLab webhook处理
+├── migrations/                               # 数据库迁移文件
+├── pb_data/                                  # PocketBase 数据目录
+└── [README.md](mdc:README.md)                # 项目文档
+```
+
+## 核心架构
+
+### PocketBase 集成模式
+- **应用初始化**: 在 [main.go](mdc:main.go) 中使用 `pocketbase.New()` 创建应用实例
+- **中间件绑定**: 使用 `.BindFunc()` 方法绑定中间件到路由
+- **事件监听**: 使用 `app.OnServe()` 监听服务事件并注册路由
+
+### 中间件设计
+中间件采用闭包模式设计：
+```go
+// 飞书中间件工厂函数
+func LarkAuth(config *LarkConfig) func(e *core.RequestEvent) error
+
+// GitLab webhook验证中间件
+func GitLabWebhook(config *GitLabConfig) func(e *core.RequestEvent) error
+```
+
+## API 端点
+
+### 飞书多维表格 API
+- `GET /base/{baseID}/{tableID}/{recordID}` - 获取特定记录
+- `GET /base/{baseID}/{tableID}` - 获取表格数据
+
+### GitLab Webhook API
+- `POST /webhook/gitlab` - GitLab webhook 接收端点
+
+## 开发规范
+
+### 环境变量配置
+在 `.env` 文件中配置：
+```bash
+# 飞书配置
+LARK_APP_ID=cli_xxx
+LARK_APP_SECRET=xxx
+LARK_BASE_URL=https://open.feishu.cn
+LARK_WEB_URL=
+
+# GitLab配置
+GITLAB_WEBHOOK_SECRET=xxx
+GITLAB_BASE_URL=https://gitlab.com
+```
+
+### 配置管理模式
+所有配置通过 [config.go](mdc:config.go) 统一管理：
+```go
+func LoadConfig() *LarkApp        // 加载飞书配置
+func LoadGitLabConfig() *GitLabConfig  // 加载GitLab配置
+```
+
+### 错误处理规范
+使用 PocketBase 提供的错误处理方法：
+```go
+e.BadRequestError("错误信息", err)      // 400错误
+e.UnauthorizedError("认证失败", nil)    // 401错误
+e.NotFoundError("资源未找到", nil)      // 404错误
+e.InternalServerError("服务器错误", err) // 500错误
+```
+
+### 日志记录规范
+```go
+e.App.Logger().Info("信息日志", "key", value)
+e.App.Logger().Warn("警告日志", "error", err)
+e.App.Logger().Error("错误日志", "error", err)
+e.App.Logger().Debug("调试日志", "data", data)
+```
+
+## API 集成模式
+
+### 飞书 SDK 使用
+```go
+// 从上下文获取飞书客户端
+client, ok := middlewares.GetLarkClientFromContext(e.Request.Context())
+if !ok {
+    return e.InternalServerError("Failed to get Lark client", nil)
+}
+```
+
+### GitLab Webhook 验证
+```go
+// Token验证
+token := e.Request.Header.Get("X-Gitlab-Token")
+if token != config.WebhookSecret {
+    return e.UnauthorizedError("Invalid GitLab webhook token", nil)
+}
+
+// 事件类型获取
+eventType := e.Request.Header.Get("X-Gitlab-Event")
+```
+
+### 路径参数获取
+```go
+baseID := e.Request.PathValue("baseID")
+tableID := e.Request.PathValue("tableID")
+recordID := e.Request.PathValue("recordID")
+```
+
+## 数据库操作
+
+### PocketBase 集合操作
+```go
+// 创建记录
+record := models.NewRecord(collection)
+record.Set("field_name", value)
+err := e.App.Save(record)
+
+// 查询记录
+records, err := e.App.FindRecordsByFilter(
+    collection,
+    "field = {:value}",
+    map[string]interface{}{"value": searchValue},
+)
+```
+
+## 本地开发
+
+### 环境设置
+```bash
+# 1. 创建.env文件并配置环境变量
+# 2. 安装依赖
+go mod download
+
+# 3. 启动开发服务器
+go run main.go
+```
+
+### 数据库迁移
+- 开发模式下，在 Dashboard 中修改集合结构会自动生成迁移文件
+- 迁移文件位于 `migrations/` 目录，使用时间戳命名
+
+## Docker 部署
+
+### 本地构建
+```bash
+# 构建镜像
+docker build -t lark-base-mapping .
+
+# 运行容器
+docker run --env-file .env -p 8080:8080 lark-base-mapping
+```
+
+### 生产部署
+项目支持通过 GitHub Actions 自动构建多架构 Docker 镜像：
+- `ghcr.io/{owner}/lark-base-mapping:latest` - 最新版本
+- `ghcr.io/{owner}/lark-base-mapping:v1.0.0` - 版本标签
+
+### Kubernetes 部署示例
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lark-base-mapping
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: lark-base-mapping
+  template:
+    metadata:
+      labels:
+        app: lark-base-mapping
+    spec:
+      containers:
+      - name: app
+        image: ghcr.io/{owner}/lark-base-mapping:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: LARK_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: lark-secrets
+              key: app-id
+        volumeMounts:
+        - name: data
+          mountPath: /pb_data
+```
+
+## 监控和维护
+
+### 健康检查
+- `/api/health` - 应用健康状态
+- `/api/realtime` - 实时连接状态
+
+### 数据备份
+```bash
+# SQLite数据库备份
+sqlite3 pb_data/data.db ".backup backup_$(date +%Y%m%d_%H%M%S).db"
+
+# 完整数据目录备份
+tar -czf pb_data_backup_$(date +%Y%m%d_%H%M%S).tar.gz pb_data/
+```
+
+### 安全配置
+- 生产环境启用 HTTPS
+- 使用 Kubernetes Secrets 存储敏感信息
+- 定期轮换 API 密钥和 webhook 密钥
+- 配置防火墙规则限制访问
