@@ -88,6 +88,14 @@ func LarkBaseTable(e *core.RequestEvent) error {
 
 	app.Logger().Info("Processing record", "recordID", recordID)
 
+	// 获取 table 记录中的 record_id_field，如果为空则使用默认值"编号"
+	recordIDField := table.GetString("record_id_field")
+	if recordIDField == "" {
+		recordIDField = "编号" // 向后兼容的默认值
+	}
+
+	app.Logger().Info("Using record ID field", "fieldName", recordIDField, "recordID", recordID)
+
 	// 使用搜索记录的方式获取记录
 	searchReq := larkbitable.NewSearchAppTableRecordReqBuilder().
 		AppToken(baseID).
@@ -98,7 +106,7 @@ func LarkBaseTable(e *core.RequestEvent) error {
 				Conjunction(`and`).
 				Conditions([]*larkbitable.Condition{
 					larkbitable.NewConditionBuilder().
-						FieldName(`编号`).
+						FieldName(recordIDField).
 						Operator(`is`).
 						Value([]string{recordID}).
 						Build(),
