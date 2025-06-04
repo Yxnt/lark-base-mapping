@@ -17,29 +17,57 @@ alwaysApply: false
   - `github.com/larksuite/oapi-sdk-go/v3` - 飞书 Open API SDK
   - `github.com/joho/godotenv` - 环境变量管理
 
-### 项目结构
+## 项目架构
+
+### 目录结构
 ```
-├── [main.go](mdc:main.go)                    # 应用程序入口点，配置路由和中间件
-├── [config.go](mdc:config.go)                # 配置管理（飞书和GitLab配置）
-├── middlewares/                              # 中间件目录
-│   ├── [lark.go](mdc:middlewares/lark.go)    # 飞书认证中间件
-│   └── [gitlab.go](mdc:middlewares/gitlab.go) # GitLab webhook中间件
-├── router/                                   # 路由处理器目录
-│   ├── [lark.go](mdc:router/lark.go)        # 飞书相关API路由
-│   └── [gitlab.go](mdc:router/gitlab.go)    # GitLab webhook处理
-├── migrations/                               # 数据库迁移文件
-├── pb_data/                                  # PocketBase 数据目录
-└── [README.md](mdc:README.md)                # 项目文档
+├── main.go                          # 应用程序入口点，配置路由和中间件
+├── config.go                        # 配置管理（飞书和GitLab配置）
+├── types/                           # 数据结构定义
+│   └── gitlab.go                    # GitLab webhook 数据结构
+├── handlers/                        # 业务处理逻辑
+│   ├── gitlab_system_hook.go        # GitLab系统钩子事件处理
+│   ├── gitlab_merge_request.go      # GitLab合并请求事件处理
+│   └── gitlab_note.go               # GitLab评论事件处理
+├── middlewares/                     # 中间件目录
+│   ├── lark.go                      # 飞书认证中间件
+│   └── gitlab.go                    # GitLab webhook中间件
+├── router/                          # 路由处理器目录
+│   ├── lark.go                      # 飞书相关API路由
+│   └── gitlab_webhook.go            # GitLab webhook路由分发
+├── migrations/                      # 数据库迁移文件
+├── pb_data/                         # PocketBase 数据目录
+└── README.md                        # 项目文档
 ```
 
-## 核心架构
+### 分层架构设计
 
-### PocketBase 集成模式
-- **应用初始化**: 在 [main.go](mdc:main.go) 中使用 `pocketbase.New()` 创建应用实例
+#### Types 层 - 数据结构定义
+- **职责**: 纯数据结构定义，无业务逻辑
+- **特点**: 提供类型安全，便于维护和扩展
+- **文件**: `types/gitlab.go` - 包含所有 GitLab webhook 相关的数据结构
+
+#### Handlers 层 - 业务处理逻辑  
+- **职责**: 核心业务处理逻辑，可独立测试
+- **特点**: 专注于特定业务领域，易于单元测试
+- **文件**:
+  - `handlers/gitlab_system_hook.go` - 系统钩子事件处理
+  - `handlers/gitlab_merge_request.go` - 合并请求事件处理
+  - `handlers/gitlab_note.go` - 评论事件处理
+
+#### Router 层 - 路由分发
+- **职责**: 仅负责路由分发，轻量化
+- **特点**: 简洁的路由逻辑，快速分发到对应处理器
+- **文件**: `router/gitlab_webhook.go` - GitLab webhook 路由分发
+
+### 核心架构
+
+#### PocketBase 集成模式
+- **应用初始化**: 在 `main.go` 中使用 `pocketbase.New()` 创建应用实例
 - **中间件绑定**: 使用 `.BindFunc()` 方法绑定中间件到路由
 - **事件监听**: 使用 `app.OnServe()` 监听服务事件并注册路由
 
-### 中间件设计
+#### 中间件设计
 中间件采用闭包模式设计：
 ```go
 // 飞书中间件工厂函数
@@ -48,6 +76,94 @@ func LarkAuth(config *LarkConfig) func(e *core.RequestEvent) error
 // GitLab webhook验证中间件
 func GitLabWebhook(config *GitLabConfig) func(e *core.RequestEvent) error
 ```
+
+## GitLab 模块重构说明
+
+原来的大型 `router/gitlab.go` 文件已经按照职责和功能进行了模块化重构，现在采用更清晰的分层架构：
+
+### 重构后的模块结构
+
+#### 📁 `types/` - 数据结构定义
+- **`gitlab.go`** (17KB, 460行) - 包含所有 GitLab webhook 相关的数据结构定义
+  - `FlexibleTime` - 自定义时间类型，支持多种时间格式解析
+  - 基础结构体：`User`, `Project`, `Repository`, `Commit`, `Author`, `Label` 等
+  - 各种事件结构体（Merge Request、System Hook、Note等）
+  - 系统事件结构体（项目、用户、组、访问请求、密钥等）
+
+#### 📁 `handlers/` - 业务处理逻辑
+- **`gitlab_system_hook.go`** (17KB, 509行) - 系统钩子事件处理
+  - `HandleSystemHookEvent()` - 系统钩子事件总入口
+  - 支持新格式和传统格式系统事件
+  - 项目、用户、组、访问请求、密钥、仓库更新等事件处理
+  
+- **`gitlab_merge_request.go`** (8.8KB, 222行) - Merge Request 事件处理
+  - `HandleMergeRequestEvent()` - 标准 MR Hook 事件处理
+  - `HandleSystemHookMergeRequestEvent()` - System Hook 格式的 MR 事件处理
+  - 数据库记录保存和作者信息安全处理
+  
+- **`gitlab_note.go`** (4.5KB, 148行) - Note/评论事件处理
+  - `HandleNoteEvent()` - Note Hook 事件处理
+  - 支持多种评论类型：MergeRequest, Issue, Commit, Snippet
+
+#### 📁 `router/` - 路由分发（仅保留路由逻辑）
+- **`gitlab_webhook.go`** (2.6KB, 93行) - 主要的 webhook 路由分发
+  - `GitLabWebhook()` - 主要的 webhook 入口函数
+  - 根据 `X-Gitlab-Event` 头部分发到对应的处理器
+  - 基础事件处理器的占位符实现（Push, Tag Push, Issues）
+
+### 重构设计原则
+
+#### 1. **单一职责原则**
+每个目录和文件都有明确的职责：
+- `types/` 专注于数据结构定义
+- `handlers/` 专注于业务逻辑处理
+- `router/` 专注于请求路由分发
+
+#### 2. **模块化和可扩展性**
+- 新增事件类型只需在对应模块中添加
+- 数据结构变更集中在 `types/` 目录
+- 业务逻辑分散到对应的处理器
+- 易于进行单元测试和集成测试
+
+#### 3. **职责清晰**
+- 每个模块都有明确的输入输出接口
+- 模块间依赖关系清晰
+- 便于团队并行开发
+
+### 重构使用指南
+
+#### 1. 添加新的事件类型
+1. 在 `types/gitlab.go` 中添加数据结构
+2. 在 `handlers/` 中创建或扩展处理器
+3. 在 `router/gitlab_webhook.go` 中添加路由分发
+
+#### 2. 修改现有事件处理
+直接在 `handlers/` 目录中对应的处理器文件中修改
+
+#### 3. 添加新的数据结构
+在 `types/gitlab.go` 中添加，所有模块都可以通过导入使用
+
+#### 4. 导入路径示例
+
+```go
+// 使用数据类型
+import "gitlab.yogorobot.com/sre/lark-base-mapping/types"
+
+// 使用处理器
+import "gitlab.yogorobot.com/sre/lark-base-mapping/handlers"
+
+// 使用路由
+import "gitlab.yogorobot.com/sre/lark-base-mapping/router"
+```
+
+### 重构主要改进
+
+1. **可读性提升**: 每个文件专注于特定功能，代码更易读易懂
+2. **维护性提升**: 修改特定功能时不会影响其他模块
+3. **扩展性提升**: 新增功能时有明确的添加位置和规范
+4. **团队协作**: 多人开发时可以并行修改不同模块
+5. **测试友好**: 可以针对每个模块进行单独的单元测试
+6. **职责清晰**: 每个目录都有明确的职责边界
 
 ## API 端点
 
@@ -75,7 +191,7 @@ GITLAB_BASE_URL=https://gitlab.com
 ```
 
 ### 配置管理模式
-所有配置通过 [config.go](mdc:config.go) 统一管理：
+所有配置通过 `config.go` 统一管理：
 ```go
 func LoadConfig() *LarkApp        // 加载飞书配置
 func LoadGitLabConfig() *GitLabConfig  // 加载GitLab配置
@@ -97,6 +213,35 @@ e.App.Logger().Warn("警告日志", "error", err)
 e.App.Logger().Error("错误日志", "error", err)
 e.App.Logger().Debug("调试日志", "data", data)
 ```
+
+### 代码组织规范
+
+#### 包导入顺序
+```go
+import (
+    // 标准库
+    "encoding/json"
+    "net/http"
+    
+    // 第三方库
+    "github.com/pocketbase/pocketbase/core"
+    
+    // 项目内部包
+    "gitlab.yogorobot.com/sre/lark-base-mapping/types"
+)
+```
+
+#### 函数命名规范
+- 公共函数使用大写字母开头（如 `HandleSystemHookEvent`）
+- 私有函数使用小写字母开头（如 `handleProjectSystemEvent`）
+- 处理器函数统一使用 `Handle` 前缀
+
+#### 注意事项
+- 保持导入路径的一致性
+- 数据结构定义统一在 `types/` 目录中
+- 业务逻辑集中在 `handlers/` 目录中
+- 路由逻辑仅在 `router/` 目录中
+- 错误处理和日志记录保持一致的风格
 
 ## API 集成模式
 
